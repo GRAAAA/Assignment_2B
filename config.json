@@ -1,0 +1,11 @@
+{
+    "window_size": "1280x860",
+    "train_loc_index": 1,
+    "train_epochs": 30,
+    "enable_deep_learning": false,
+    "default_date": "16 Oct 2006",
+    "default_time": "08:00",
+    "default_start": "2000",
+    "default_end": "3002",
+    "top_k_routes": 5
+}
