@@ -1,8 +1,8 @@
 {
     "window_size": "1280x860",
     "train_loc_index": 1,
-    "train_epochs": 30,
-    "enable_deep_learning": false,
+    "train_epochs": 3,
+    "enable_deep_learning": true,
     "default_date": "16 Oct 2006",
     "default_time": "08:00",
     "default_start": "2000",

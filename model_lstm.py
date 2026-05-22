@@ -4,12 +4,20 @@ import numpy as np
 
 warnings.filterwarnings("ignore")
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ.setdefault(
+    "MPLCONFIGDIR",
+    os.path.join(os.path.dirname(__file__), ".matplotlib-cache"),
+)
+os.environ.setdefault(
+    "XDG_CACHE_HOME",
+    os.path.join(os.path.dirname(__file__), ".cache"),
+)
 
 try:
     import tensorflow as tf
     tf.get_logger().setLevel("ERROR")
     from tensorflow.keras.models import Sequential
-    from tensorflow.keras.layers import LSTM, Dense, Dropout
+    from tensorflow.keras.layers import Input, LSTM, Dense, Dropout
     from tensorflow.keras.callbacks import EarlyStopping
 except ImportError:
     raise ImportError("TensorFlow required: pip install tensorflow")
@@ -32,7 +40,8 @@ def _compute_metrics(y_true, y_pred, name):
 
 def build_lstm(seq_len: int = SEQ_LEN, units: int = 64) -> Sequential:
     model = Sequential([
-        LSTM(units, input_shape=(seq_len, 1), return_sequences=True),
+        Input(shape=(seq_len, 1)),
+        LSTM(units, return_sequences=True),
         Dropout(0.2),
         LSTM(units // 2),
         Dropout(0.2),
@@ -46,6 +55,7 @@ def train_lstm(dl_data: tuple, epochs: int = 50,
                batch_size: int = 32, verbose: int = 0) -> dict:
     X_tr, X_te, y_tr, y_te, scaler = dl_data
 
+    tf.keras.utils.set_random_seed(42)
     model = build_lstm(seq_len=X_tr.shape[1])
     early_stop = EarlyStopping(monitor="val_loss", patience=8,
                                restore_best_weights=True)

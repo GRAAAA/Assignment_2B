@@ -28,23 +28,38 @@ def compare_models(results: list) -> dict:
 
 
 if __name__ == "__main__":
+    import argparse
     import sys, os
     sys.path.insert(0, os.path.dirname(__file__))
     from data_processor import prepare_location
 
-    print("Preparing data for location 1 ...")
-    data = prepare_location(1)
+    parser = argparse.ArgumentParser(
+        description="Train and compare the three traffic prediction models.")
+    parser.add_argument("--loc-index", type=int, default=1,
+                        help="SCATS location index from the dataset (default: 1).")
+    parser.add_argument("--epochs", type=int, default=10,
+                        help="Epochs for LSTM and GRU training (default: 10).")
+    parser.add_argument("--verbose", type=int, default=0,
+                        help="Keras training verbosity: 0, 1, or 2 (default: 0).")
+    args = parser.parse_args()
+
+    print(f"Preparing data for location {args.loc_index} ...")
+    data = prepare_location(args.loc_index)
+    print(f"  Location: {data['location']}")
 
     print("Training Random Forest ...")
     rf_res = train_rf(data["rf_data"])
     print(f"  RF   RMSE={rf_res['metrics']['rmse']:.4f}  NRMSE={rf_res['metrics']['nrmse']:.4f}")
 
-    print("Training LSTM (10 epochs) ...")
-    lstm_res = train_lstm(data["dl_data"], epochs=10, verbose=0)
+    if train_lstm is None or train_gru is None:
+        raise RuntimeError("TensorFlow is required for LSTM/GRU. Run: pip install -r requirements.txt")
+
+    print(f"Training LSTM ({args.epochs} epochs) ...")
+    lstm_res = train_lstm(data["dl_data"], epochs=args.epochs, verbose=args.verbose)
     print(f"  LSTM RMSE={lstm_res['metrics']['rmse']:.4f}  NRMSE={lstm_res['metrics']['nrmse']:.4f}")
 
-    print("Training GRU (10 epochs) ...")
-    gru_res = train_gru(data["dl_data"], epochs=10, verbose=0)
+    print(f"Training GRU ({args.epochs} epochs) ...")
+    gru_res = train_gru(data["dl_data"], epochs=args.epochs, verbose=args.verbose)
     print(f"  GRU  RMSE={gru_res['metrics']['rmse']:.4f}  NRMSE={gru_res['metrics']['nrmse']:.4f}")
 
     cmp = compare_models([lstm_res, gru_res, rf_res])

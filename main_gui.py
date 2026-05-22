@@ -16,7 +16,6 @@ os.environ.setdefault(
     os.path.join(os.path.dirname(__file__), ".cache"),
 )
 
-import numpy as np
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
@@ -76,7 +75,7 @@ for (_f, _t), _loc in sorted(EDGE_TO_LOCATION.items()):
 # Defaults (from config or hardcoded fallback)
 TRAIN_LOC_INDEX = _CFG.get("train_loc_index", 1)
 TRAIN_EPOCHS    = _CFG.get("train_epochs", 30)
-ENABLE_DEEP_LEARNING = _CFG.get("enable_deep_learning", False)
+ENABLE_DEEP_LEARNING = _CFG.get("enable_deep_learning", True)
 TOP_K           = _CFG.get("top_k_routes", 5)
 DEFAULT_DATE    = _CFG.get("default_date", "16 Oct 2006")
 DEFAULT_TIME    = _CFG.get("default_time", "08:00")
@@ -517,8 +516,14 @@ class TBRGSApp:
             self._log_setup("Training LSTM, GRU and Random Forest...\n")
         else:
             self._log_setup("Training Random Forest (LSTM/GRU disabled for this machine)...\n")
-        threading.Thread(target=self._train_worker,
-                         args=(TRAIN_EPOCHS,), daemon=True).start()
+        if ENABLE_DEEP_LEARNING:
+            self._log_setup(
+                "Launching TensorFlow worker from the GUI main thread for macOS stability. "
+                "The window may pause until training finishes.\n")
+            self.root.after(100, lambda: self._train_worker(TRAIN_EPOCHS))
+        else:
+            threading.Thread(target=self._train_worker,
+                             args=(TRAIN_EPOCHS,), daemon=True).start()
 
     def _train_worker(self, epochs):
         try:
@@ -527,7 +532,9 @@ class TBRGSApp:
             predictor = TrafficPredictor()
             predictor.train_all(loc_index=TRAIN_LOC_INDEX,
                                 epochs=epochs, verbose=0,
-                                include_deep_learning=ENABLE_DEEP_LEARNING)
+                                include_deep_learning=ENABLE_DEEP_LEARNING,
+                                strict_deep_learning=ENABLE_DEEP_LEARNING,
+                                external_deep_learning=ENABLE_DEEP_LEARNING)
             station_locs = list(set(EDGE_TO_LOCATION.values()))
             predictor.train_station_rf_models(station_locs)
             self.predictor = predictor
@@ -591,7 +598,7 @@ class TBRGSApp:
                 self.predictor, predict_day=predict_day,
                 time_slot=time_slot, model="best", per_edge_flow=True)
 
-            # Top-k routes via A* path diversity (Yen's algorithm variant)
+            # Top-k simple paths ranked by ML-derived travel-time weights.
             routes = top_k_paths(graph, start, end, k=TOP_K)
 
             # All 6 A2A algorithm results for comparison
@@ -681,11 +688,8 @@ class TBRGSApp:
             f_node, t_node = path[i], path[i + 1]
             loc = EDGE_TO_LOCATION.get((f_node, t_node), "")
             weight = next((w for nb, w in graph.get(f_node, []) if nb == t_node), None)
-            try:
-                flow = self.predictor.predict(predict_day, time_slot, "best",
-                                              location_name=loc)
-            except Exception:
-                flow = float("nan")
+            flow = self.predictor.predict(predict_day, time_slot, "best",
+                                          location_name=loc)
             rows.append({
                 "step": i + 1,
                 "edge": f"{f_node}->{t_node}",
@@ -715,7 +719,7 @@ class TBRGSApp:
         self._write_results(f"  {self._best_model_line()}\n", "meta")
 
         if not routes:
-            self._write_results("No path found by A*.\n", "meta")
+            self._write_results("No route found.\n", "meta")
         else:
             best = routes[0]
             self._write_results("\nBEST PATH\n", "head")
@@ -724,7 +728,7 @@ class TBRGSApp:
             self._write_results(
                 f"  Total weight : {best['time_min']:.2f} min\n", "best")
 
-            self._write_results(f"\nTOP-{len(routes)} ROUTES (A* with ML weights)\n",
+            self._write_results(f"\nTOP-{len(routes)} ROUTES (ML travel-time weights)\n",
                                 "head")
             for r in routes:
                 path_str = " -> ".join(r["path"])

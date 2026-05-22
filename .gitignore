@@ -1,0 +1,5 @@
+__pycache__/
+.venv-tf/
+.cache/
+.matplotlib-cache/
+model_artifacts/

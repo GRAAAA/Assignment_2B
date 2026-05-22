@@ -11,6 +11,7 @@ SPEED_LIMIT        = 60.0    # km/h
 CAPACITY_FLOW      = 1500.0  # veh/hr
 CAPACITY_SPD       = 32.0    # km/h
 INTERSECTION_DELAY = 0.5     # minutes
+DEMO_FLOW_PER_15MIN = 50.0
 
 # Fundamental diagram coefficients: flow = A*speed^2 + B*speed
 _A = -CAPACITY_FLOW / (CAPACITY_SPD ** 2)  # -1.4648375
@@ -154,16 +155,6 @@ def travel_time_minutes(flow_per_15min: float, distance_km: float) -> float:
     return (distance_km / speed) * 60.0 + INTERSECTION_DELAY
 
 
-def haversine_km(lat1, lon1, lat2, lon2) -> float:
-    R    = 6371.0
-    dlat = math.radians(lat2 - lat1)
-    dlon = math.radians(lon2 - lon1)
-    a    = (math.sin(dlat / 2) ** 2
-            + math.cos(math.radians(lat1)) * math.cos(math.radians(lat2))
-            * math.sin(dlon / 2) ** 2)
-    return R * 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
-
-
 def build_graph(predictor=None, predict_day: str = "10/16/2006",
                 time_slot: int = 32, model: str = "best") -> dict:
     """Build adjacency list with ML-predicted travel-time edge weights."""
@@ -173,48 +164,33 @@ def build_graph(predictor=None, predict_day: str = "10/16/2006",
         if from_id not in coords or to_id not in coords:
             continue
         if predictor is not None:
-            try:
-                flow = predictor.predict(predict_day, time_slot, model)
-            except Exception:
-                flow = 50.0
+            flow = predictor.predict(predict_day, time_slot, model)
         else:
-            flow = 50.0
+            flow = DEMO_FLOW_PER_15MIN
         weight = travel_time_minutes(flow, dist_km)
         graph.setdefault(from_id, []).append((to_id, weight))
     return graph
 
 
-def _h(node, destinations, coords):
-    """Admissible heuristic: straight-line travel time at speed limit."""
-    if node not in coords:
-        return 0.0
-    lat1, lon1 = coords[node]
-    best = math.inf
-    for dest in destinations:
-        if dest not in coords:
-            continue
-        lat2, lon2 = coords[dest]
-        t = (haversine_km(lat1, lon1, lat2, lon2) / SPEED_LIMIT) * 60.0
-        if t < best:
-            best = t
-    return best if best != math.inf else 0.0
-
-
 def astar_tbrgs(graph: dict, origin: str, destinations: list) -> tuple:
-    """A* on the TBRGS weighted graph. Returns (goal, time_min, path, nodes_created)."""
-    coords   = get_coords()
+    """Uniform-cost search on TBRGS travel-time weights.
+
+    This is equivalent to A* with h(n)=0. It keeps the public function name used
+    by the rest of the project while making the cost logic explicit: the
+    priority is total predicted travel time only.
+    """
     dest_set = set(destinations)
     if origin in dest_set:
         return origin, 0.0, [origin], 1
 
     g_cost   = {origin: 0.0}
     counter  = 0
-    frontier = [(_h(origin, destinations, coords), origin, counter, 0.0, [origin])]
+    frontier = [(0.0, origin, counter, [origin])]
     explored = set()
     nodes_created = 1
 
     while frontier:
-        _, current, _, g_val, path = heapq.heappop(frontier)
+        g_val, current, _, path = heapq.heappop(frontier)
         if current in explored:
             continue
         explored.add(current)
@@ -228,52 +204,51 @@ def astar_tbrgs(graph: dict, origin: str, destinations: list) -> tuple:
                 g_cost[neighbour] = tg
                 counter += 1
                 nodes_created += 1
-                f_new = tg + _h(neighbour, destinations, coords)
-                heapq.heappush(frontier, (f_new, neighbour, counter,
-                                          tg, path + [neighbour]))
+                heapq.heappush(frontier, (tg, neighbour, counter,
+                                          path + [neighbour]))
     return None, math.inf, [], nodes_created
 
 
-def top_k_paths(graph: dict, origin: str, destination: str, k: int = 5) -> list:
-    """
-    Return up to k shortest travel-time paths from origin to destination.
-    Uses iterative edge-blocking (Yen-style spur approach).
-    """
-    results       = []
-    candidates    = []
-    blocked_edges = set()
+def top_k_paths(graph: dict, origin: str, destination: str, k: int = 5,
+                max_expansions: int = 20000) -> list:
+    """Return up to k lowest-cost simple paths ranked by travel time."""
+    if origin == destination:
+        return [{"rank": 1, "path": [origin], "time_min": 0.0,
+                 "nodes_created": 1}]
 
-    def _run(g):
-        return astar_tbrgs(g, origin, [destination])
+    results = []
+    seen_results = set()
+    frontier = [(0.0, 0, origin, [origin])]
+    counter = 0
+    nodes_created = 1
 
-    goal, t, path, nc = _run(graph)
-    if goal is None:
-        return []
-    results.append({"rank": 1, "path": path, "time_min": round(t, 2),
-                    "nodes_created": nc})
+    expansions = 0
+    while frontier and len(results) < k and expansions < max_expansions:
+        cost, _, current, path = heapq.heappop(frontier)
+        expansions += 1
+        if current == destination:
+            key = tuple(path)
+            if key not in seen_results:
+                seen_results.add(key)
+                results.append({
+                    "rank": len(results) + 1,
+                    "path": path,
+                    "time_min": round(cost, 2),
+                    "nodes_created": nodes_created,
+                })
+            continue
 
-    for rank in range(2, k + 1):
-        prev_path = results[-1]["path"]
-        for spur_idx in range(len(prev_path) - 1):
-            spur_to   = prev_path[spur_idx + 1]
-            block_key = (prev_path[spur_idx], spur_to)
-            mod_graph = {
-                node: [(nb, w) for nb, w in nbrs
-                       if (node, nb) != block_key
-                       and (node, nb) not in blocked_edges]
-                for node, nbrs in graph.items()
-            }
-            g2, t2, p2, nc2 = _run(mod_graph)
-            if g2 is not None and tuple(p2) not in {tuple(r["path"]) for r in results}:
-                candidates.append((t2, p2, nc2))
-            blocked_edges.add(block_key)
-
-        if not candidates:
-            break
-        candidates.sort(key=lambda x: x[0])
-        t_b, p_b, nc_b = candidates.pop(0)
-        results.append({"rank": rank, "path": p_b,
-                        "time_min": round(t_b, 2), "nodes_created": nc_b})
+        for neighbour, edge_cost in sorted(graph.get(current, []), key=lambda e: e[0]):
+            if neighbour in path:
+                continue
+            counter += 1
+            nodes_created += 1
+            heapq.heappush(frontier, (
+                cost + edge_cost,
+                counter,
+                neighbour,
+                path + [neighbour],
+            ))
 
     return results
 

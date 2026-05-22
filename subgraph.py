@@ -2,12 +2,21 @@ import sys
 import os
 import math
 import heapq
+
+os.environ.setdefault(
+    "MPLCONFIGDIR",
+    os.path.join(os.path.dirname(__file__), ".matplotlib-cache"),
+)
+os.environ.setdefault(
+    "XDG_CACHE_HOME",
+    os.path.join(os.path.dirname(__file__), ".cache"),
+)
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import matplotlib.patheffects as pe
-import numpy as np
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -114,6 +123,7 @@ SPEED_LIMIT         = 60.0
 CAPACITY_FLOW       = 1500.0
 FREE_FLOW_THRESHOLD = 351.0
 INTERSECTION_DELAY  = 0.5
+DEMO_FLOW_PER_15MIN = 50.0
 
 
 def flow_to_speed(flow_per_15min: float) -> float:
@@ -141,56 +151,32 @@ def build_subgraph(predictor=None, predict_day: str = "10/16/2006",
     graph = {}
     for f, t, dist_km in SUBGRAPH_EDGES:
         if predictor is not None:
-            try:
-                if per_edge_flow and (f, t) in EDGE_TO_LOCATION:
-                    flow = predictor.predict(predict_day, time_slot, model,
-                                             location_name=EDGE_TO_LOCATION[(f, t)])
-                else:
-                    flow = predictor.predict(predict_day, time_slot, model)
-            except Exception:
-                flow = 50.0
+            if per_edge_flow and (f, t) in EDGE_TO_LOCATION:
+                flow = predictor.predict(predict_day, time_slot, model,
+                                         location_name=EDGE_TO_LOCATION[(f, t)])
+            else:
+                flow = predictor.predict(predict_day, time_slot, model)
         else:
-            flow = 50.0
+            flow = DEMO_FLOW_PER_15MIN
         graph.setdefault(f, []).append((t, round(travel_time(flow, dist_km), 3)))
     return graph
 
 
-def _haversine(a, b):
-    R    = 6371.0
-    dlat = math.radians(b[0] - a[0])
-    dlon = math.radians(b[1] - a[1])
-    x    = (math.sin(dlat / 2) ** 2
-            + math.cos(math.radians(a[0])) * math.cos(math.radians(b[0]))
-            * math.sin(dlon / 2) ** 2)
-    return R * 2 * math.atan2(math.sqrt(x), math.sqrt(1 - x))
-
-
-def _heuristic(node, destinations):
-    if node not in SUBGRAPH_COORDS:
-        return 0.0
-    lat1, lon1 = SUBGRAPH_COORDS[node][:2]
-    best = math.inf
-    for d in destinations:
-        if d not in SUBGRAPH_COORDS:
-            continue
-        t = (_haversine((lat1, lon1), SUBGRAPH_COORDS[d][:2]) / SPEED_LIMIT) * 60.0
-        if t < best:
-            best = t
-    return best if best != math.inf else 0.0
-
-
 def astar_subgraph(graph, origin, destinations):
-    """A* on the subgraph. Returns (goal, total_min, path, nodes_created)."""
+    """Uniform-cost search on ML travel-time weights.
+
+    This is A* with h(n)=0, so route choice is driven only by edge weights.
+    """
     dest_set = set(destinations)
     if origin in dest_set:
         return origin, 0.0, [origin], 1
     g_cost   = {origin: 0.0}
     counter  = 0
-    frontier = [(_heuristic(origin, destinations), origin, counter, 0.0, [origin])]
+    frontier = [(0.0, origin, counter, [origin])]
     explored = set()
     nodes_created = 1
     while frontier:
-        _, cur, _, g, path = heapq.heappop(frontier)
+        g, cur, _, path = heapq.heappop(frontier)
         if cur in explored:
             continue
         explored.add(cur)
@@ -204,8 +190,7 @@ def astar_subgraph(graph, origin, destinations):
                 g_cost[nb] = tg
                 counter += 1
                 nodes_created += 1
-                f_val = tg + _heuristic(nb, destinations)
-                heapq.heappush(frontier, (f_val, nb, counter, tg, path + [nb]))
+                heapq.heappush(frontier, (tg, nb, counter, path + [nb]))
     return None, math.inf, [], nodes_created
 
 
@@ -343,12 +328,12 @@ if __name__ == "__main__":
     graph = build_subgraph()
     print_subgraph_summary(graph)
 
-    print(f"\nA* search: {origin} -> {dest}")
+    print(f"\nUniform-cost route search: {origin} -> {dest}")
     goal, cost, path, nc = astar_subgraph(graph, origin, [dest])
     if goal:
         print(f"  Path: {' -> '.join(path)}")
         print(f"  Travel time: {cost:.2f} min   Nodes created: {nc}")
-        flow_info = f"A*: {origin} -> {dest}  |  {cost:.1f} min  |  {nc} nodes"
+        flow_info = f"UCS: {origin} -> {dest}  |  {cost:.1f} min  |  {nc} nodes"
     else:
         print("  No path found.")
         path      = None

@@ -1,4 +1,5 @@
 # TBRGS — Traffic-Based Route Guidance System
+
 ## COS30019 Introduction to AI — Assignment 2B
 
 ---
@@ -37,7 +38,7 @@ Scats_Data_October_2006.xls
 ├── ml_models.py                  ← aggregator: imports all 3, compare_models()
 ├── traffic_predictor.py          ← predict_flow(date, loc_index, time_slot, model)
 │
-├── subgraph.py                   ← 15-node SCATS subgraph + A* + visualisation
+├── subgraph.py                   ← 15-node SCATS subgraph + route visualisation
 ├── search_algorithms.py          ← adapter: runs all 6 A2A algorithms on subgraph
 ├── tbrgs_graph.py                ← full Boroondara graph + top-k paths
 │
@@ -66,16 +67,19 @@ python main_gui.py
 The GUI is a **single-screen interface** with three areas:
 
 **INPUT (left panel)**
+
 - Start Node / End Node — choose from the 15 subgraph SCATS sites
 - Day / Time — day of week and 15-minute time slot
-- Prediction Model — which ML model predicts traffic (best / lstm / gru / rf)
-- Search Algorithm — which path-finding algorithm to use
+- Route query controls — origin, destination, date and 15-minute time slot
+- Model training controls — train/evaluate LSTM, GRU and Random Forest
 
 **GRAPH VISUALISATION (right panel)**
+
 - Displays the 15-node Boroondara subgraph
 - The optimal path is highlighted in amber after a route is found
 
 **RESULTS (bottom panel)**
+
 - Best ML model and its metrics (RMSE / NRMSE / MAE / R2)
 - Predicted traffic flow / weight on each edge of the route
 - The optimal path and its total weight (travel time)
@@ -83,11 +87,11 @@ The GUI is a **single-screen interface** with three areas:
 
 ### How to use
 
-1. Click **Train ML Models**. Training is fully automatic — the models
+1. Click **Train Models**. Training is fully automatic — the models
    (LSTM, GRU, Random Forest) learn the general daily traffic pattern
    from the Boroondara SCATS data. Training runs in the background and
-   takes a few minutes.
-2. Once trained, choose **Start / End / Day / Time / Model / Algorithm**
+   takes a few minutes. The default configuration enables all three models.
+2. Once trained, choose **Start / End / Day / Time**
    and click **Find Optimal Route**.
 3. The optimal path appears on the graph, and the full results
    (predicted flow per edge, best path, total weight, algorithm
@@ -118,23 +122,51 @@ python search_algorithms.py
 python search_algorithms.py 4030 4273
 ```
 
-### A note on the six algorithms
+## Running the 3 ML Models Standalone
 
-All six Assignment-2A algorithms run on the weighted subgraph, but they
-serve different purposes:
+Use this command in consultation to prove all three prediction models are
+runnable without opening the GUI:
 
-- **A\*** and **IDA\* (CUS2)** are *weight-aware*: they minimise total
-  travel time, so the route they return is the genuinely fastest path.
-  A\* is the system default.
+```bash
+python ml_models.py --epochs 3
+```
+
+For a more stable comparison, use more epochs:
+
+```bash
+python ml_models.py --epochs 10
+```
+
+You should see metrics printed for **Random Forest**, **LSTM**, and **GRU**,
+followed by the selected best model. If TensorFlow is missing or broken, this
+command fails explicitly instead of silently pretending the deep models ran.
+The GUI also defaults to 3 epochs for consultation-speed training. In the GUI,
+LSTM/GRU run through `deep_model_worker.py`, a small subprocess wrapper that
+keeps TensorFlow outside the Tkinter process on macOS while still training and
+predicting with the real deep-learning models.
+
+### A note on routing and the six algorithms
+
+The route recommendation itself ranks simple paths by accumulated
+ML-derived travel-time weight. The search is uniform-cost over the weighted
+graph, so the route decision is driven by predicted flow → travel time, not
+by static latitude/longitude distance.
+
+The six Assignment-2A algorithms also run on the same weighted subgraph for
+comparison, but they serve different purposes:
+
+- **A\*** and **IDA\* (CUS2)** are _weight-aware_: they use accumulated
+  travel-time cost and their Assignment-2A heuristic. They are included for
+  algorithm comparison.
 - **GBFS** uses the straight-line heuristic only — fast, but not guaranteed
   optimal on travel time.
-- **BFS**, **DFS**, and **IDDFS (CUS1)** are *uninformed* and **ignore edge
-  weights**. They find *a* connecting path (BFS by fewest hops), not the
+- **BFS**, **DFS**, and **IDDFS (CUS1)** are _uninformed_ and **ignore edge
+  weights**. They find _a_ connecting path (BFS by fewest hops), not the
   fastest one. They are included for algorithm comparison, as required by
   Assignment 2A — not because they optimise traffic.
 
-In short: **A\* / IDA\* for optimal traffic routing; BFS / DFS for
-comparison.**
+In short: **uniform-cost/top-k ranking for the final recommended routes;
+A\*, IDA\*, GBFS, BFS, DFS and IDDFS for comparison.**
 
 ---
 
@@ -149,13 +181,14 @@ python test_tbrgs.py
 ```
 
 39 test cases covering:
-- T01–T05  : Data processing
-- T06–T09  : Flow → speed → travel time conversion
-- T10–T12  : Graph building and edge weights
-- T13–T17  : Route finding (A*, top-k, edge cases)
-- T18–T20  : ML model prediction sanity
-- T21–T30  : All 6 A2A algorithms on the subgraph
-- T31–T35  : Integration checks (per-edge flow, per-station RF)
+
+- T01–T05 : Data processing
+- T06–T09 : Flow → speed → travel time conversion
+- T10–T12 : Graph building and edge weights
+- T13–T17 : Route finding (A\*, top-k, edge cases)
+- T18–T20 : ML model prediction sanity
+- T21–T30 : All 6 A2A algorithms on the subgraph
+- T31–T35 : Integration checks (per-edge flow, per-station RF)
 
 ---
 
@@ -167,15 +200,15 @@ data-driven: `compare_models()` picks the model with the lowest NRMSE on the
 test split, so the "best" model can differ between runs depending on the
 training location, epochs, and the train/test split.
 
-| Model | Type | Typical RMSE range |
-|-------|------|--------------------|
-| LSTM | Deep learning (sequence) | ~15–25 |
-| GRU | Deep learning (sequence) | ~15–25 |
-| Random Forest | Ensemble (per-station) | ~15–25 |
+| Model         | Type                     | Typical RMSE range |
+| ------------- | ------------------------ | ------------------ |
+| LSTM          | Deep learning (sequence) | ~15–25             |
+| GRU           | Deep learning (sequence) | ~15–25             |
+| Random Forest | Ensemble (per-station)   | ~15–25             |
 
-*Ranges are indicative only. The three models perform comparably on this
+_Ranges are indicative only. The three models perform comparably on this
 dataset; the actual metrics and the selected best model are reported in the
-Results panel after each training run. Do not assume a fixed winner.*
+Results panel after each training run. Do not assume a fixed winner._
 
 ### Per-station Random Forest models
 
@@ -185,7 +218,7 @@ edges → 30 per-station models). Each model learns the exact traffic profile
 of its own road and direction.
 
 LSTM and GRU are **not** trained per-station: deep models take minutes each,
-and they learn the *general* daily pattern (morning/evening peaks) that is
+and they learn the _general_ daily pattern (morning/evening peaks) that is
 consistent across intersections. They are trained once on a representative
 arterial location and applied to each road's own historical sequence at
 prediction time. This gives per-station rigour for RF while keeping total
@@ -211,6 +244,7 @@ edge_weight = (distance_km / speed_km_h) × 60 + 0.5   [minutes]
 ```
 
 Assumptions (from assignment spec):
+
 - Speed limit: 60 km/h on all links
 - Flow at capacity: 1500 veh/hr, speed at capacity: 32 km/h
 - Intersection delay: 30 seconds (0.5 min) per node
@@ -219,23 +253,23 @@ Assumptions (from assignment spec):
 
 ## Subgraph Nodes (15 SCATS Sites)
 
-| SCATS ID | Location |
-|----------|----------|
-| 3120 | BURKE_RD / CANTERBURY_RD |
-| 3122 | CANTERBURY_RD / STANHOPE_GV |
-| 3127 | BALWYN_RD / CANTERBURY_RD |
-| 3180 | DONCASTER_RD / BALWYN_RD |
-| 3804 | TRAFALGAR_RD / RIVERSDALE_RD |
-| 4030 | BURKE_RD / DONCASTER_RD |
-| 4032 | BURKE_RD / HARP_RD |
-| 4034 | BURKE_RD / WHITEHORSE_RD |
-| 4035 | BURKE_RD / MONT_ALBERT_RD |
-| 4040 | BURKE_RD / RIVERSDALE_RD |
-| 4043 | BURKE_RD / TOORAK_RD |
-| 4057 | BALWYN_RD / BELMORE_RD |
-| 4063 | BALWYN_RD / WHITEHORSE_RD |
-| 4272 | RIVERSDALE_RD / TOORONGA_RD |
-| 4273 | TOORONGA_RD / TOORAK_RD |
+| SCATS ID | Location                     |
+| -------- | ---------------------------- |
+| 3120     | BURKE_RD / CANTERBURY_RD     |
+| 3122     | CANTERBURY_RD / STANHOPE_GV  |
+| 3127     | BALWYN_RD / CANTERBURY_RD    |
+| 3180     | DONCASTER_RD / BALWYN_RD     |
+| 3804     | TRAFALGAR_RD / RIVERSDALE_RD |
+| 4030     | BURKE_RD / DONCASTER_RD      |
+| 4032     | BURKE_RD / HARP_RD           |
+| 4034     | BURKE_RD / WHITEHORSE_RD     |
+| 4035     | BURKE_RD / MONT_ALBERT_RD    |
+| 4040     | BURKE_RD / RIVERSDALE_RD     |
+| 4043     | BURKE_RD / TOORAK_RD         |
+| 4057     | BALWYN_RD / BELMORE_RD       |
+| 4063     | BALWYN_RD / WHITEHORSE_RD    |
+| 4272     | RIVERSDALE_RD / TOORONGA_RD  |
+| 4273     | TOORONGA_RD / TOORAK_RD      |
 
 The subgraph forms three intersecting corridors:
 
