@@ -141,15 +141,13 @@ class TestGraphBuilding(unittest.TestCase):
                 self.assertGreater(w, 0,
                     f"Edge {node}→{nb} has non-positive weight {w}")
 
-    def test_T12_directed_edges(self):
-        """T12: Graph is directed — not every edge has a reverse."""
-        # Most edges do have reverses, but the graph is not guaranteed to be symmetric.
-        # We just verify the structure is a dict of lists.
-        self.assertIsInstance(self.graph, dict)
-        sample = next(iter(self.graph.values()))
-        self.assertIsInstance(sample, list)
-        self.assertIsInstance(sample[0], tuple)
-        self.assertEqual(len(sample[0]), 2)
+    def test_T12_all_edge_endpoints_are_valid_nodes(self):
+        """T12: Every neighbour referenced in an adjacency list is itself a node in the graph."""
+        nodes = set(self.graph.keys())
+        for u, nbrs in self.graph.items():
+            for v, _ in nbrs:
+                self.assertIn(v, nodes,
+                    f"Edge {u}→{v} references node {v} which has no adjacency entry")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -207,6 +205,17 @@ class TestRouteFinding(unittest.TestCase):
             self.assertNotEqual(route_a[0]["path"], route_b[0]["path"],
                                 "Different destinations should produce different routes")
 
+    def test_T17d_path_continuity(self):
+        """T17d: Every consecutive node pair in a returned path is a real graph edge."""
+        routes = top_k_paths(self.graph, "2000", "3002", k=1)
+        self.assertGreater(len(routes), 0)
+        path = routes[0]["path"]
+        edge_set = {(u, v) for u, nbrs in self.graph.items() for v, _ in nbrs}
+        for i in range(len(path) - 1):
+            u, v = path[i], path[i + 1]
+            self.assertIn((u, v), edge_set,
+                f"Step {u}→{v} in returned path is not a valid edge in the graph")
+
 
 # ──────────────────────────────────────────────────────────────────────────────
 # T18–T20: ML Model Prediction Sanity (run only if trained)
@@ -260,11 +269,10 @@ class TestMLPrediction(unittest.TestCase):
         self.assertEqual(cmp["best_nrmse"], min(nrmses),
                          "best_nrmse must equal the lowest NRMSE in summary")
 
-    def test_T35_per_station_rf_models(self):
-        """T35: Each SCATS location gets its own independent RF model."""
+    def test_T36_per_station_rf_models_are_distinct(self):
+        """T36: Each SCATS location gets its own independently-trained RF model object."""
         self._skip_if_no_predictor()
         from subgraph import EDGE_TO_LOCATION
-        # Train per-station RF for three different locations
         locs = list(set(EDGE_TO_LOCATION.values()))[:3]
         models = []
         for loc in locs:
@@ -272,7 +280,7 @@ class TestMLPrediction(unittest.TestCase):
             self.assertIn("model", rf)
             self.assertIn("metrics", rf)
             models.append(id(rf["model"]))
-        # The three station models must be distinct objects
+        # The three station models must be distinct Python objects
         self.assertEqual(len(set(models)), len(models),
             "Each station must have its own independently-trained RF model")
 
@@ -343,12 +351,13 @@ class TestAllAlgorithms(unittest.TestCase):
             msg="IDA* and A* should find equally optimal travel times"
         )
 
-    def test_T27_optimal_algorithms_agree(self):
-        """T27: A*, BFS, IDDFS, IDA* all find the same hop count (optimal)."""
-        results = {a: self._run(a) for a in ["astar", "bfs", "cus1", "cus2"]}
-        hops = [results[a]["hops"] for a in results if results[a]["found"]]
-        self.assertTrue(all(h == hops[0] for h in hops),
-                        f"Optimal algorithms should agree on hops: {hops}")
+    def test_T27_hop_optimal_algorithms_agree(self):
+        """T27: BFS and IDDFS (both hop-minimising) return the same hop count as each other."""
+        r_bfs  = self._run("bfs")
+        r_cus1 = self._run("cus1")
+        self.assertTrue(r_bfs["found"] and r_cus1["found"])
+        self.assertEqual(r_bfs["hops"], r_cus1["hops"],
+            "BFS and IDDFS both minimise hops — they must agree on hop count")
 
     def test_T28_dfs_may_find_longer_path(self):
         """T28: DFS path hops >= optimal (DFS is not hop-optimal)."""

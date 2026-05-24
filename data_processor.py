@@ -2,7 +2,6 @@ import os
 import warnings
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 
 warnings.filterwarnings("ignore")
@@ -97,8 +96,8 @@ def build_features(ts: pd.DataFrame, lag1: bool = True, lag2: bool = True) -> pd
 
 def get_rf_features_target(ts: pd.DataFrame):
     feat = build_features(ts)
-    feature_cols = ["day", "month", "year", "day_of_week",
-                    "time_slot", "hour", "y_lag1", "y_lag2"]
+    # month and year are constant in this single-month dataset — excluded to avoid noise
+    feature_cols = ["day", "day_of_week", "time_slot", "hour", "y_lag1", "y_lag2"]
     X = feat[feature_cols].values
     y = feat["flow"].values
     return X, y, feature_cols
@@ -106,9 +105,9 @@ def get_rf_features_target(ts: pd.DataFrame):
 
 def get_rf_train_test(ts: pd.DataFrame):
     X, y, cols = get_rf_features_target(ts)
-    X_tr, X_te, y_tr, y_te = train_test_split(
-        X, y, test_size=TEST_SIZE, random_state=RANDOM_SEED)
-    return X_tr, X_te, y_tr, y_te, cols
+    # Chronological split — same as DL. Random splitting leaks future rows into training.
+    split = int(len(X) * (1 - TEST_SIZE))
+    return X[:split], X[split:], y[:split], y[split:], cols
 
 
 def build_sequences(values: np.ndarray, seq_len: int = SEQ_LEN):

@@ -301,7 +301,7 @@ def draw_subgraph(graph=None, highlight_path=None,
 
 def print_subgraph_summary(graph=None):
     print("=" * 70)
-    print("BOROONDARA 15-NODE SCATS SUBGRAPH")
+    print("BOROONDARA 17-NODE SCATS SUBGRAPH")
     print("=" * 70)
     print(f"\n{'SCATS ID':<10} {'Lat':>10} {'Lon':>10}  Location")
     print(f"{'─'*10} {'─'*10} {'─'*10}  {'─'*30}")

@@ -157,14 +157,27 @@ def travel_time_minutes(flow_per_15min: float, distance_km: float) -> float:
 
 def build_graph(predictor=None, predict_day: str = "10/16/2006",
                 time_slot: int = 32, model: str = "best") -> dict:
-    """Build adjacency list with ML-predicted travel-time edge weights."""
+    """Build adjacency list with ML-predicted travel-time edge weights.
+
+    When a predictor is given, each directed edge queries the predictor for the
+    SCATS location that corresponds to that edge direction (imported from
+    subgraph.EDGE_TO_LOCATION). Edges not in the mapping fall back to the
+    predictor's global prediction so no edge is silently dropped.
+    """
+    try:
+        from subgraph import EDGE_TO_LOCATION as _etl
+    except ImportError:
+        _etl = {}
+
     coords = get_coords()
     graph  = {}
     for (from_id, to_id, dist_km) in BOROONDARA_EDGES:
         if from_id not in coords or to_id not in coords:
             continue
         if predictor is not None:
-            flow = predictor.predict(predict_day, time_slot, model)
+            loc_name = _etl.get((from_id, to_id))
+            flow = predictor.predict(predict_day, time_slot, model,
+                                     location_name=loc_name)
         else:
             flow = DEMO_FLOW_PER_15MIN
         weight = travel_time_minutes(flow, dist_km)
