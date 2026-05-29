@@ -53,8 +53,17 @@ def predict_rf(model, feature_cols: list,
                day: int, month: int, year: int,
                day_of_week: int, time_slot: int, hour: int,
                y_lag1: float = 0.0, y_lag2: float = 0.0) -> float:
-    x    = np.array([[day, month, year, day_of_week,
-                      time_slot, hour, y_lag1, y_lag2]])
+    values = {
+        "day": day,
+        "month": month,
+        "year": year,
+        "day_of_week": day_of_week,
+        "time_slot": time_slot,
+        "hour": hour,
+        "y_lag1": y_lag1,
+        "y_lag2": y_lag2,
+    }
+    x    = np.array([[values[col] for col in feature_cols]])
     pred = float(model.predict(x)[0])
     return max(0.0, pred)
 

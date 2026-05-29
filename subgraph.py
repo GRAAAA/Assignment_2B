@@ -106,13 +106,13 @@ EDGE_TO_LOCATION = {
     ("4273", "4272"): "TOORONGA_RD N of TOORAK_RD",
     ("4273", "4043"): "TOORAK_RD E of TOORONGA_RD",
     ("4043", "4273"): "TOORAK_RD W OF BURKE_RD",
-    # Assignment example nodes
-    ("2000", "3120"): "BURKE_RD N of CANTERBURY_RD",
-    ("3120", "2000"): "BURKE_RD S of CANTERBURY_RD",
-    ("2000", "4272"): "RIVERSDALE_RD W of BURKE_RD",
-    ("4272", "2000"): "TOORONGA_RD N of TOORAK_RD",
-    ("3002", "4034"): "BURKE_RD N OF WHITEHORSE_RD",
-    ("4034", "3002"): "BURKE_RD S OF WHITEHORSE_RD",
+    # Assignment example nodes (unique strings — not shared with any real network edge)
+    ("2000", "3120"): "WARRIGAL_RD N of TOORAK_RD",
+    ("3120", "2000"): "WARRIGAL_RD S of CANTERBURY_RD",
+    ("2000", "4272"): "TOORAK_RD W of WARRIGAL_RD",
+    ("4272", "2000"): "TOORAK_RD E of WARRIGAL_RD",
+    ("3002", "4034"): "BARKERS_RD E of DENMARK_ST",
+    ("4034", "3002"): "BARKERS_RD W of BURKE_RD",
 }
 
 
@@ -196,7 +196,7 @@ def astar_subgraph(graph, origin, destinations):
 
 def draw_subgraph(graph=None, highlight_path=None,
                   origin=None, destination=None,
-                  title="Boroondara 15-Node SCATS Subgraph",
+                  title="Boroondara 17-Node SCATS Subgraph",
                   flow_info="", save_path=None, show=False,
                   demo_mode=True):
     coords  = SUBGRAPH_COORDS
@@ -255,23 +255,25 @@ def draw_subgraph(graph=None, highlight_path=None,
         x, y    = proj(nid)
         in_path = highlight_path and nid in highlight_path
         if nid == origin:
-            color, size, ring = "#2E7D32", 260, 3.5
+            color, size, ring = "#2E7D32", 200, 3.5
         elif nid == destination:
-            color, size, ring = "#C62828", 260, 3.5
+            color, size, ring = "#C62828", 200, 3.5
         elif in_path:
-            color, size, ring = "#E65100", 180, 2.5
+            color, size, ring = "#E65100", 140, 2.5
         else:
-            color, size, ring = "#1565C0", 130, 1.2
+            color, size, ring = "#1565C0", 100, 1.2
         ax.scatter(x, y, s=size * 1.9, c=color, alpha=0.15, zorder=4)
         ax.scatter(x, y, s=size, c=color, zorder=5,
                    edgecolors="white", linewidths=ring)
-        ax.text(x, y, nid, ha="center", va="center", zorder=7,
-                fontsize=6.5, fontweight="bold", fontfamily="monospace",
-                color="white")
+        ax.text(x, y + 0.025, nid, ha="center", va="bottom", zorder=7,
+                fontsize=8.5, fontweight="bold", fontfamily="monospace",
+                color="#1A202C",
+                bbox=dict(boxstyle="round,pad=0.15", fc="white",
+                          ec="none", alpha=0.8))
         road = info[2].replace("\n", " / ")
-        yoff = 0.046 if y < 0.5 else -0.05
+        yoff = 0.052 if y < 0.5 else -0.056
         ax.text(x, y + yoff, road, ha="center", va="center",
-                fontsize=6.2, color="#546E7A", zorder=6,
+                fontsize=6.8, color="#546E7A", zorder=6,
                 path_effects=[pe.withStroke(linewidth=2.5, foreground="white")])
 
     legend_items = [

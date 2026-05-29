@@ -38,7 +38,7 @@ Scats_Data_October_2006.xls
 ├── ml_models.py                  ← aggregator: imports all 3, compare_models()
 ├── traffic_predictor.py          ← predict_flow(date, loc_index, time_slot, model)
 │
-├── subgraph.py                   ← 15-node SCATS subgraph + route visualisation
+├── subgraph.py                   ← 17-node SCATS subgraph + route visualisation
 ├── search_algorithms.py          ← adapter: runs all 6 A2A algorithms on subgraph
 ├── tbrgs_graph.py                ← full Boroondara graph + top-k paths
 │
@@ -50,7 +50,7 @@ Scats_Data_October_2006.xls
 ├── cus2.py                       ← IDA*  (CUS2)
 │
 ├── main_gui.py                   ← tkinter GUI — entry point
-├── test_tbrgs.py                 ← 39 test cases (T01–T35)
+├── test_tbrgs.py                 ← 20 route guidance test cases (P01–P20)
 │
 ├── requirements.txt
 └── README.md
@@ -180,15 +180,7 @@ SKIP_ML_TESTS=1 python test_tbrgs.py
 python test_tbrgs.py
 ```
 
-39 test cases covering:
-
-- T01–T05 : Data processing
-- T06–T09 : Flow → speed → travel time conversion
-- T10–T12 : Graph building and edge weights
-- T13–T17 : Route finding (A\*, top-k, edge cases)
-- T18–T20 : ML model prediction sanity
-- T21–T30 : All 6 A2A algorithms on the subgraph
-- T31–T35 : Integration checks (per-edge flow, per-station RF)
+20 route guidance test cases (P01–P20) covering all six algorithms across a range of origin and destination pairs. Each test asserts the correct path, hop count, and travel time, and saves a route map image to test_screenshots/.
 
 ---
 
@@ -251,10 +243,12 @@ Assumptions (from assignment spec):
 
 ---
 
-## Subgraph Nodes (15 SCATS Sites)
+## Subgraph Nodes (17 SCATS Sites)
 
 | SCATS ID | Location                     |
 | -------- | ---------------------------- |
+| 2000     | BARKERS_RD / DENMARK_ST      |
+| 3002     | (assignment default dest)    |
 | 3120     | BURKE_RD / CANTERBURY_RD     |
 | 3122     | CANTERBURY_RD / STANHOPE_GV  |
 | 3127     | BALWYN_RD / CANTERBURY_RD    |
